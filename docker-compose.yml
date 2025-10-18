@@ -1,0 +1,79 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: enc-postgres
+    environment:
+      POSTGRES_DB: enc_db
+      POSTGRES_USER: enc_user
+      POSTGRES_PASSWORD: enc_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - enc-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: enc-redis
+    ports:
+      - "6378:6379"
+    networks:
+      - enc-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: enc-backend
+    ports:
+      - "9000:3000"
+    environment:
+      NODE_ENV: development
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: enc_user
+      DATABASE_PASSWORD: enc_password
+      DATABASE_NAME: enc_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CORS_ORIGIN: http://localhost:6173
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./data:/app/data
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - enc-network
+    command: npm run dev
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: enc-frontend
+    ports:
+      - "6173:5173"
+    environment:
+      VITE_API_URL: http://localhost:9000
+      VITE_WS_URL: ws://localhost:9000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - enc-network
+    command: npm run dev -- --host
+
+volumes:
+  postgres_data:
+
+networks:
+  enc-network:
+    driver: bridge
